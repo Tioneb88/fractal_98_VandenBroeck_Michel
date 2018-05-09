@@ -8,6 +8,8 @@ typedef struct
 	int height;
 	double a;
 	double b;
+	int **pixel;
+	int average;
 } fractal;
 
 /*
@@ -28,6 +30,20 @@ struct fractal *fractal_new(const char *name, int width, int height, double a, d
  * @f: fractale à libérer
  */
 void fractal_free(struct fractal *f);
+
+#ifndef _FRACTAL_H
+#define _FRACTAL_H
+
+typedef struct
+{
+	char *name;
+	int width;
+	int height;
+	double a;
+	double b;
+	int **pixel;
+	int average;
+} fractal;
 
 /*
  * fractal_get_name: retourne le nom de la fractale
@@ -67,7 +83,7 @@ int fractal_get_width(const struct fractal *f);
 
 /*
  * fractal_get_height: retourne la hauteur de l'image de la fractale
- * 
+ *
  * @f: fractale
  * @return: hauteur
  */
@@ -75,7 +91,7 @@ int fractal_get_height(const struct fractal *f);
 
 /*
  * fractal_get_a: retourne la partie réelle des coordonnées de la fractale
- * 
+ *
  * @f: fractale
  * @return: partie réelle
  */
@@ -88,6 +104,14 @@ double fractal_get_a(const struct fractal *f);
  * @return: partie imaginaire
  */
 double fractal_get_b(const struct fractal *f);
+
+/*
+ * fractal_get_average: retourne la moyenne des pixels de la fractale
+ *
+ * @f: fractale
+ * @return: moyenne de la valeur des pixels
+ */
+double fractal_get_average(const struc fractal *f);
 
 /*
  * fractal_compute_value
@@ -113,29 +137,5 @@ int fractal_compute_value(struct fractal *f, int x, int y);
  * @return: 0 si pas d'erreurs, -1 sinon
  */
 int write_bitmap_sdl(const struct fractal *f, const char *fname);
-
-/*
-* read
-*
-* Lit le fichier passé en argument, extrait chaque ligne et appelle la fonction extract
-* avec la ligne courante en argument. Stocke ensuite la fractale retournée dans le buffer
-* s'il y a encore assez de place, attend que la place se libère sinon.
-*
-* @filename: nom du fichier dont on extrait les lignes.
-* @return: 0 si on finit la lecture du fichier sans accroc, -1 autrement.
-*/
-int read(char* filename);
-
-/*
- * extract
- *
- * Lit la chaîne de caractères extraite d'un fichier et extrait les informations pour les 
- * stocker dans une structure fractale. null est renvoyé si le format "nom largeur hauteur 
- * partie_réelle partie_imaginaire" n'est pas respecté.
- *
- * @line: chaîne de caractères dont on doit extraire l'information
- * @return: une structure fractal contenant les informations ou null si une erreur survient.
- */
-fractal extract(char* line);
 
 #endif
