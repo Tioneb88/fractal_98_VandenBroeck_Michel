@@ -114,4 +114,28 @@ int fractal_compute_value(struct fractal *f, int x, int y);
  */
 int write_bitmap_sdl(const struct fractal *f, const char *fname);
 
+/*
+* read
+*
+* Lit le fichier passé en argument, extrait chaque ligne et appelle la fonction extract
+* avec la ligne courante en argument. Stocke ensuite la fractale retournée dans le buffer
+* s'il y a encore assez de place, attend que la place se libère sinon.
+*
+* @filename: nom du fichier dont on extrait les lignes.
+* @return: 0 si on finit la lecture du fichier sans accroc, -1 autrement.
+*/
+int read(char* filename);
+
+/*
+ * extract
+ *
+ * Lit la chaîne de caractères extraite d'un fichier et extrait les informations pour les 
+ * stocker dans une structure fractale. null est renvoyé si le format "nom largeur hauteur 
+ * partie_réelle partie_imaginaire" n'est pas respecté.
+ *
+ * @line: chaîne de caractères dont on doit extraire l'information
+ * @return: une structure fractal contenant les informations ou null si une erreur survient.
+ */
+fractal extract(char* line);
+
 #endif
