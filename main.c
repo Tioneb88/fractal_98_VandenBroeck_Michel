@@ -35,26 +35,24 @@ int main(int argc, char *argv[])
 	 * 1ère étape : récupération des arguments et des options de la ligne de commande.
 	 */
 
-	// On sait que argv[0] contient le nom de l'exécutable,
-	// que argv[argc-1] est le nom du fichier de sortie final
-	// et que les argc-2 autres valeurs de argv (entre argv[0] et argv[argc-1]) contiennent les noms des fichiers (ou la ligne de commande) à lire.
-
 	// On récupère les options et les arguments passés en ligne de commande.
 	int dflag = 0;
+	int maxflag = 0;
 	int maxthread = 1;
 	int error;
 
-	while ((c = getopt(argc, argv, "maxthread:d")) != -1)
+	while ((c = getopt(argc, argv, "maxthreads:d")) != -1)
 		switch (c)
 		{
 		case 'd':
 			dflag = 1;
 			break;
 		case 'maxthreads':
+		    maxflag = 1;
 			maxthread = optarg;
 			break;
 		case '?':
-			if (optopt == 'c')
+			if (optopt == 'maxthreads')
 				fprintf(stderr, "Option -%c requires an argument.\n", optopt);
 			else if (isprint(optopt))
 				fprintf(stderr, "Unknown option `-%c'.\n", optopt);
@@ -67,15 +65,15 @@ int main(int argc, char *argv[])
 			abort();
 		}
 
-	char *fileNames;
-
 	/*
 	* 2ème étape : on lance un thread de lecture par fichier ou pour l'entrée standard. On extrait
 	* les données de fractales des lignes valides, on stocke ces données dans une structure fractale
 	* dont l'adresse est placée dans un buffer de lecture dès qu'il y a suffisamment de place.
 	*/
 
-	int NFiles;
+    // On sait que le premier argument est le nom de l'exécutable ensuite, on décale en fonction des options et
+    // on sait que le dernier argument est le nom du fichier de sortie.
+	int NFiles = argc-(dflag + 2*maxflag)-2;
 
 	pthread_mutex_init(&readbufferMutex, NULL);
 	sem_init(&readbufferEmpty, 0, maxthread);
@@ -93,6 +91,15 @@ int main(int argc, char *argv[])
 		}
 	}
 
+	for(long j = 0; j < NFiles; j++)
+    {
+        readerr = pthread_join(&readthreads[i], NULL);
+		if (readerr != 0)
+		{
+			error(readerr, "pthread_join_read");
+		}
+    }
+
 	/*
 	* 3ème étape : on va voir si le readbuffer contient au moins un élément, si c'est le cas et qu'on
 	* n'a pas encore atteint le maximum de threads de calcul alors, on lance un thread qui récupère
@@ -105,12 +112,21 @@ int main(int argc, char *argv[])
 	//lecture du readbuffer (=consommateurs) puis remplissage du computebuffer (=producteurs)
 	pthread_t computethreads[NFiles];
 	int computeerr;
-	for (long i = 0; i < NFiles; i++) {
-		computeerr = pthread_create(&(computethreads(i), NULL, &thread_compute, NULL))
+	for (long k = 0; k < NFiles; k++) {
+		computeerr = pthread_create(&(computethreads[k], NULL, &thread_compute, NULL))
 			if (computeerr != 0) {
 				error(computeerr, "pthread_create_compute")
 			}
 	}
+
+	for(long m = 0; m < NFiles; m++)
+    {
+        computeerr = pthread_join(&readthreads[m], NULL);
+		if (computeerr != 0)
+		{
+			error(computeerr, "pthread_join_compute");
+		}
+    }
 
 
 	pthread_t compare;
@@ -141,7 +157,7 @@ int main(int argc, char *argv[])
 * @filename: nom du fichier dont on extrait les lignes.
 * @return: 0 si on finit la lecture du fichier sans accroc, -1 autrement.
 */
-int read(char* filename)
+void *read(char* filename)
 {
 	FILE* fichier = NULL;
 
@@ -308,18 +324,26 @@ void thread_compute() {
  * @return: void
  */
 void thread_compare() {
-	int i = 0;
-	while (computebuffer[i] != NUll) {
-		if (i == NFiles - 1) {
-			i = 0;
-		}
-		else {
-			i++;
-		}
-	}
-	struct fractal fcopy = computebuffer[i];
-	computebuffer[i] = NULL;
-	if (fcopy->average > max_frac->average) {
+    struct fractal *fcopy;
+    int i;
+	sem_wait(&computebufferFull); //attente d'un slot rempli dans computebuffer
+	pthread_mutex_lock(&computebufferMutex);
+    //section critique
+	for(i=0; i<NFiles; i++)
+    {
+        if(computebuffer[i] != NULL)
+        {
+            &fcopy = computebuffer[i];
+            computebuffer[i] = NULL;
+            break;
+        }
+    }
+	//fin de section critique
+    pthread_mutex_unlock(&computebufferMutex);
+    sem_post(&computebufferEmpty);
+
+	if (fcopy->average > max_frac->average)
+    {
 		&max_frac = &fcopy;
 	}
 }
@@ -334,7 +358,7 @@ void thread_compare() {
  * @return: void
  */
 void fractal_average(const struct fractal *f) {
-	int Sum = 0;
+	int sum = 0;
 	int w = fractal_get_width(f);
 	int h = fractal_get_height(f);
 	int x;
@@ -342,10 +366,10 @@ void fractal_average(const struct fractal *f) {
 
 	for (x = 0; x < w; x++) {
 		for (y = 0; y < h; y++) {
-			Sum = Sum + fractal_get_value(f,x,y);
+			sum += fractal_get_value(f,x,y);
 		}
 	}
-	f->average = (Sum / (w*h));
+	f->average = (sum / (w*h));
 }
 
 /*
