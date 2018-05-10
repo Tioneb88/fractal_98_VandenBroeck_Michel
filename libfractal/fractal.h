@@ -31,20 +31,6 @@ struct fractal *fractal_new(const char *name, int width, int height, double a, d
  */
 void fractal_free(struct fractal *f);
 
-#ifndef _FRACTAL_H
-#define _FRACTAL_H
-
-typedef struct
-{
-	char *name;
-	int width;
-	int height;
-	double a;
-	double b;
-	int **pixel;
-	int average;
-} fractal;
-
 /*
  * fractal_get_name: retourne le nom de la fractale
  *

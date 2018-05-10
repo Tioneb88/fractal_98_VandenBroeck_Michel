@@ -6,25 +6,27 @@
 #include <semaphore.h>
 #include "fractal.h"
 
+#define READ_SIZE 200
+#define COMPUTE_SIZE 30
+
 // fonctions externes
 int read(char* filename);
 fractal extract(char* line);
 void thread_compute();
 void thread_compare();
 void fractal_average(const struct fractal *f);
-int max_tab(int tab[], int size);
 
 // variables globales
-fractal readbuffer[NFiles];
-fractal computingbuffer[NFiles];
-fractal max_frac;
+fractal *readbuffer[READ_SIZE];
+fractal *computingbuffer[COMPUTE_SIZE];
+fractal *max_frac;
 
-// variables globales pour le readbuffer (problème des producteurs-conssomateurs)
+// variables globales pour le readbuffer (problème des producteurs-consommateurs)
 pthread_mutex_t readbufferMutex;
 sem_t readbufferEmpty;
 sem_t readbufferFull;
 
-// variables globales pour le computebuffer (problème des producteurs-conssomateurs)
+// variables globales pour le computebuffer (problème des producteurs-consommateurs)
 pthread_mutex_t computebufferMutex;
 sem_t computebufferEmpty;
 sem_t computebufferFull;
@@ -66,23 +68,24 @@ int main(int argc, char *argv[])
 		}
 
 	/*
-	* 2ème étape : on lance un thread de lecture par fichier ou pour l'entrée standard. On extrait
-	* les données de fractales des lignes valides, on stocke ces données dans une structure fractale
-	* dont l'adresse est placée dans un buffer de lecture dès qu'il y a suffisamment de place.
+	* 2ème étape : on lance un thread de lecture par fichier ou pour l'entrée standard (avec un maximum de 200 threads).
+	* On extrait les données de fractales des lignes valides, on stocke ces données dans une structure fractale dont l'
+	* adresse est placée dans un buffer de lecture dès qu'il y a suffisamment de place.
 	*/
 
-    // On sait que le premier argument est le nom de l'exécutable ensuite, on décale en fonction des options et
-    // on sait que le dernier argument est le nom du fichier de sortie.
-	int NFiles = argc-(dflag + 2*maxflag)-2;
-
-	pthread_mutex_init(&readbufferMutex, NULL);
-	sem_init(&readbufferEmpty, 0, maxthread);
-	sem_init(&readbufferFull, 0, maxthread);
+	//initialisation des protecteurs d'accès à readbuffer
+	int readMerr = pthread_mutex_init(&readbufferMutex, NULL);
+	if(readMerr != 0)
+    {
+        error(readMerr, "pthread_mutex_init_read");
+    }
+	sem_init(&readbufferEmpty, 0, READ_SIZE);
+	sem_init(&readbufferFull, 0, 0);
 
     //lecture des fichiers et remplissage du readbuffer (=producteurs)
-    pthread_t readthreads[NFiles];
+    pthread_t readthreads[READ_SIZE];
 	int readerr;
-	for (long i = 0; i < NFiles; i++)
+	for (long i = 0; i < READ_SIZE; i++)
 	{
 		readerr = pthread_create(&readthreads[i], NULL, &read, (void *) &fileNames[i]);
 		if (readerr != 0)
@@ -91,7 +94,8 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	for(long j = 0; j < NFiles; j++)
+	/*
+	for(long j = 0; j < READ_SIZE; j++)
     {
         readerr = pthread_join(&readthreads[i], NULL);
 		if (readerr != 0)
@@ -99,6 +103,7 @@ int main(int argc, char *argv[])
 			error(readerr, "pthread_join_read");
 		}
     }
+    */
 
 	/*
 	* 3ème étape : on va voir si le readbuffer contient au moins un élément, si c'est le cas et qu'on
@@ -110,15 +115,36 @@ int main(int argc, char *argv[])
 	*/
 
 	//lecture du readbuffer (=consommateurs) puis remplissage du computebuffer (=producteurs)
-	pthread_t computethreads[NFiles];
+	int computeSize = 1;
+	if(maxthread<COMPUTE_SIZE)
+    {
+        computeSize = maxthread;
+    }
+    else
+    {
+        computeSize = COMPUTE_SIZE;
+    }
+	pthread_t computethreads[computeSize];
+
+	//initialisation des protecteurs d'accès à computebuffer
+	int computeMerr = pthread_mutex_init(&computebufferMutex, NULL);
+	if(computeMerr != 0)
+    {
+        error(computeMerr, "pthread_mutex_init_compute");
+    }
+	sem_init(&computebufferEmpty, 0, computeSize);
+	sem_init(&computebufferFull, 0, 0);
+
+	//lecture de readbuffer (=consommateurs) et remplissage du computebuffer (=producteurs)
 	int computeerr;
-	for (long k = 0; k < NFiles; k++) {
-		computeerr = pthread_create(&(computethreads[k], NULL, &thread_compute, NULL))
+	for (long k = 0; k < computeSize; k++) {
+		computeerr = pthread_create(&(computethreads[k], NULL, &thread_compute, (void *) &computeSize));
 			if (computeerr != 0) {
 				error(computeerr, "pthread_create_compute")
 			}
 	}
 
+	/*
 	for(long m = 0; m < NFiles; m++)
     {
         computeerr = pthread_join(&readthreads[m], NULL);
@@ -127,14 +153,64 @@ int main(int argc, char *argv[])
 			error(computeerr, "pthread_join_compute");
 		}
     }
+    */
 
-
-	pthread_t compare;
-	int err3 = pthread_create(&(compare(i), NULL, &read, NULL))
-
-	/*
+    /*
 	* 4ème étape : on affiche la fractale maximale ou toutes les fractales si l'argument -d est présent.
 	*/
+
+    if (dflag != 1)
+    {
+        pthread_t comparethread;
+        int compareerr = pthread_create(&(comparethread, NULL, &thread_compare, (void *) &computeSize));
+        if (compareerr != 0) {
+            error(compareerr, "pthread_create_compare");
+        }
+        write_bitmap_sdl(max_frac, fractal_get_name(max_frac));
+    }
+    else{
+        pthread_t displaythread;
+        int displayerr = pthread_create(&(displaythread, NULL, &thread_compute_get, (void *) &computeSize));
+        if (displayerr != 0) {
+            error(displayerr, "pthread_create_display");
+        }
+
+        fractal *frac;
+        int join_displayerr = pthread_join(&displaythread, (void **) &frac);
+        if (join_displayeerr != 0)
+        {
+            error(join_displayerr, "pthread_join_display");
+        }
+        write_bitmap_sdl(frac, fractal_get_name(frac));
+    }
+
+    //élimination des variables de protection des buffers
+    int err_destroy = sem_destroy(&readbufferEmpty);
+    if (err_destroy != 0){
+            error(err_destroy, "sem_destroy_err");
+        }
+    err_destroy = sem_destroy(&readbufferFull);
+    if (err_destroy != 0){
+            error(err_destroy, "sem_destroy_err");
+        }
+    err_destroy = sem_destroy(&computebufferEmpty);
+    if (err_destroy != 0){
+            error(err_destroy, "sem_destroy_err");
+        }
+    err_destroy = sem_destroy(&computebufferFull);
+    if (err_destroy != 0){
+            error(err_destroy, "sem_destroy_err");
+        }
+
+    int err_destroy_mutex = pthread_mutex_destroy(&readbufferMutex);
+    if (err_destroy_muetx != 0){
+            error(err_destroy_mutex, "mutex_destroy_err");
+        }
+    int err_destroy_mutex = pthread_mutex_destroy(&computebufferMutex);
+    if (err_destroy_muetx != 0){
+            error(err_destroy_mutex, "mutex_destroy_err");
+        }
+
 
 
 	return 0;
@@ -157,7 +233,7 @@ int main(int argc, char *argv[])
 * @filename: nom du fichier dont on extrait les lignes.
 * @return: 0 si on finit la lecture du fichier sans accroc, -1 autrement.
 */
-void *read(char* filename)
+void *thread_read(char* filename)
 {
 	FILE* fichier = NULL;
 
@@ -167,21 +243,22 @@ void *read(char* filename)
 	{
 		while (fgets(line, MAX_SIZE, fichier) != NULL) // On lit le fichier tant qu'on ne reçoit pas d'erreur (NULL).
 		{
-			fractal fract = extract(line);
+			fractal fract = line_extract(line);
 
 			// On met la fractale extraite dans le buffer où elle va attendre son calcul.
 			if (fract != NULL)
 			{
 			    int i;
+			    int found = 0;
 			    sem_wait(&readbufferEmpty); //attente d'un slot libre dans readbuffer.
 			    pthread_mutex_lock(&readbufferMutex);
 			    //section critique
-			    for(i=0; i<NFiles; i++)
+			    for(i=0; i<READ_SIZE && found == 0; i++)
                 {
                     if(readbuffer[i] == NULL)
                     {
                         readbuffer[i] = fract;
-                        break;
+                        found = 1;
                     }
                 }
 			    //fin de section critique
@@ -189,11 +266,8 @@ void *read(char* filename)
 			    sem_post(&readbufferFull);
 			}
 		}
-
 		fclose(fichier);
 	}
-
-	return 0;
 }
 
 /*
@@ -206,7 +280,7 @@ void *read(char* filename)
  * @line: chaîne de caractères dont on doit extraire l'information
  * @return: une structure fractal contenant les informations ou null si une erreur survient.
  */
-fractal extract(char* line)
+fractal line_extract(char* line)
 {
 	int iter = 0;
 	char *token;
@@ -264,19 +338,20 @@ fractal extract(char* line)
  *
  * @return: void
  */
-void thread_compute() {
+void *thread_compute(int computeSize) {
     struct fractal *fcopy;
+    int found = 0;
     int i;
 	sem_wait(&readbufferFull); //attente d'un slot rempli dans readbuffer
 	pthread_mutex_lock(&readbufferMutex);
     //section critique
-	for(i=0; i<NFiles; i++)
+	for(i=0; i<READ_SIZE && found == 0; i++)
     {
         if(readbuffer[i] != NULL)
         {
-            &fcopy = readbuffer[i];
+            fcopy = readbuffer[i];
             readbuffer[i] = NULL;
-            break;
+            found = 1;
         }
     }
 	//fin de section critique
@@ -298,54 +373,21 @@ void thread_compute() {
 	fcopy->average = fractal_average(fcopy);
 
     int j;
+    int foundBis = 0;
 	sem_wait(&computebufferEmpty); //attente d'un slot libre dans computebuffer.
     pthread_mutex_lock(&computebufferMutex);
     //section critique
-    for(j=0; j<NFiles; j++)
+    for(j=0; j<computeSize && foundBis == 0; j++)
     {
         if(computebuffer[j] == NULL)
         {
             computebuffer[j] = fcopy;
-            break;
+            foundBis = 1;
         }
     }
     //fin de section critique
     pthread_mutex_unlock(&computebufferMutex);
     sem_post(&computebufferFull);
-}
-
-/*
- * thread_compare
- *
- * Lit le buffer de calcul, s'il n'est pas vide, prend une fractale qui y est stockée, regarde si la
- * moyenne des valeurs de tous ses pixels est plus grande que la moyenne maximale actuelle, si c'est
- * le cas, remplace la fractale maximale par la fractale courante.
- *
- * @return: void
- */
-void thread_compare() {
-    struct fractal *fcopy;
-    int i;
-	sem_wait(&computebufferFull); //attente d'un slot rempli dans computebuffer
-	pthread_mutex_lock(&computebufferMutex);
-    //section critique
-	for(i=0; i<NFiles; i++)
-    {
-        if(computebuffer[i] != NULL)
-        {
-            &fcopy = computebuffer[i];
-            computebuffer[i] = NULL;
-            break;
-        }
-    }
-	//fin de section critique
-    pthread_mutex_unlock(&computebufferMutex);
-    sem_post(&computebufferEmpty);
-
-	if (fcopy->average > max_frac->average)
-    {
-		&max_frac = &fcopy;
-	}
 }
 
 /*
@@ -373,20 +415,67 @@ void fractal_average(const struct fractal *f) {
 }
 
 /*
- * max_tab
+ * thread_compare
  *
- * Calcule le maximum de toutes les valeurs d'un tableau d'entier.
+ * Lit le buffer de calcul, s'il n'est pas vide, prend une fractale qui y est stockée, regarde si la
+ * moyenne des valeurs de tous ses pixels est plus grande que la moyenne maximale actuelle, si c'est
+ * le cas, remplace la fractale maximale par la fractale courante.
  *
- * @tab: tableau d'entiers
- * @size: taille de tab
- * @return: le maximum obtenu (au minimum 0).
+ * @return: void
  */
-int max_tab(int tab[], int size) {
-	int max = 0;
-	for (i = 0; i < size; i++) {
-		if (tab[i] > max) {
-			max = tab[i];
-		}
+void thread_compare(int computeSize) {
+    struct fractal *fcopy;
+    int i;
+    int found = 0;
+	sem_wait(&computebufferFull); //attente d'un slot rempli dans computebuffer
+	pthread_mutex_lock(&computebufferMutex);
+    //section critique
+	for(i=0; i<computeSize && found == 0; i++)
+    {
+        if(computebuffer[i] != NULL)
+        {
+            fcopy = computebuffer[i];
+            computebuffer[i] = NULL;
+            found = 1;
+        }
+    }
+	//fin de section critique
+    pthread_mutex_unlock(&computebufferMutex);
+    sem_post(&computebufferEmpty);
+
+	if (fcopy->average > max_frac->average)
+    {
+		max_frac = fcopy;
 	}
-	return max;
+}
+
+/*
+ * thread_compute_get
+ *
+ * Lit le buffer de calcul, s'il n'est pas vide, prend une fractale qui y est stockée et la retourne.
+ *
+ * @return: pointeur casté de la structure fractale lue.
+ */
+void *thread_compute_get(int computeSize)
+{
+    struct fractal *fcopy;
+    int i;
+    int found = 0;
+	sem_wait(&computebufferFull); //attente d'un slot rempli dans computebuffer
+	pthread_mutex_lock(&computebufferMutex);
+    //section critique
+	for(i=0; i<computeSize && found == 0; i++)
+    {
+        if(computebuffer[i] != NULL)
+        {
+            fcopy = computebuffer[i];
+            computebuffer[i] = NULL;
+            found = 1;
+        }
+    }
+	//fin de section critique
+    pthread_mutex_unlock(&computebufferMutex);
+    sem_post(&computebufferEmpty);
+
+    return ((void *) fcopy);
 }
