@@ -1,15 +1,15 @@
 #ifndef _FRACTAL_H
 #define _FRACTAL_H
 
-typedef struct
+typedef struct fractal
 {
-	char *name;
+	const char *name;
 	int width;
 	int height;
 	double a;
 	double b;
 	int **pixel;
-	int average;
+	double average;
 } fractal;
 
 /*
@@ -97,7 +97,7 @@ double fractal_get_b(const struct fractal *f);
  * @f: fractale
  * @return: moyenne de la valeur des pixels
  */
-double fractal_get_average(const struc fractal *f);
+double fractal_get_average(const struct fractal *f);
 
 /*
  * fractal_compute_value

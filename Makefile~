@@ -1,0 +1,20 @@
+CC=gcc -Wall -g	-W
+
+all:	main
+
+main:	main.o
+	$(CC)	-o	main	main.o	libfractal/libfractal.a	-lpthread	sdl-config --cflags --libs
+
+clean : 
+	rm -rf main *.o libfractal/*.o libfractal/libfractal.a test
+lib :
+	cd libfractal && make
+main.o:	main.c
+	cd libfractal && make
+	$(CC)	-o main.o	-c	main.c
+tests: test.o
+	$(CC) -o test test.o -lcunit
+	./test
+test.o: tests/test.c
+	$(CC) -o test.o -c tests/test.c
+
